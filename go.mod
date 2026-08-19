@@ -70,15 +70,10 @@ require (
 
 require (
 	filippo.io/bigmod v0.1.1-0.20260103110540-f8a47775ebe5 // indirect
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/provision/trust v0.0.0-00010101000000-000000000000 // indirect
-	github.com/awnumar/memcall v0.4.0 // indirect
-	github.com/awnumar/memguard v0.23.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dunglas/httpsfv v1.1.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
-	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
@@ -101,12 +96,9 @@ require (
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.44.0 // indirect
-	go.opentelemetry.io/otel/metric v1.44.0 // indirect
-	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
@@ -116,26 +108,4 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
-)
-
-// DNTLS: direct imports from the fork's dntls package.
-require (
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/core v0.0.0
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/tls v0.0.0
-)
-
-// DNTLS: resolve fork imports via relative paths back to the DNTLS tree.
-replace (
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/cbor => ../../lib/cbor
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/config => ../../lib/config
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/core => ../../lib/core
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/networks => ../../lib/networks
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/provision => ../../lib/provision
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/provision/trust => ../../lib/provision/trust
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/resolver => ../../lib/resolver
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/sr => ../../lib/sr
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/sr/envelope => ../../lib/sr/envelope
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/tls => ../../lib/tls
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/lib/verifier => ../../lib/verifier
-	github.com/Sakura-Industries-LLC/ProjectCobra/dntls/testutil => ../../testutil
 )

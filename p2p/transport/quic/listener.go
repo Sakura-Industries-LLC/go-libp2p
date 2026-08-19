@@ -9,6 +9,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
+	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/quic-go/quic-go"
@@ -112,11 +113,30 @@ func (l *listener) wrapConn(qconn *quic.Conn) (*conn, error) {
 }
 
 func (l *listener) wrapConnWithScope(qconn *quic.Conn, connScope network.ConnManagementScope, remoteMultiaddr ma.Multiaddr) (*conn, error) {
-	// Extract the remote peer's identity from the TLS connection state
-	// using the DNTLS provider.
-	remotePubKey, remotePeerID, err := l.transport.dntlsCfg.ExtractPeerIdentity(qconn.ConnectionState().TLS)
-	if err != nil {
-		return nil, err
+	// DNTLS: the provider extracts the remote identity when set.
+	// Otherwise, the tls.Config used to establish this connection already
+	// verified the certificate chain. Since we don't have any way of knowing
+	// which tls.Config was used though, we have to re-determine the peer's
+	// identity here. Therefore, this is expected to never fail.
+	var (
+		remotePubKey ic.PubKey
+		remotePeerID peer.ID
+		err          error
+	)
+	if l.transport.dntlsCfg != nil {
+		remotePubKey, remotePeerID, err = l.transport.dntlsCfg.ExtractPeerIdentity(qconn.ConnectionState().TLS)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		remotePubKey, err = p2ptls.PubKeyFromCertChain(qconn.ConnectionState().TLS.PeerCertificates)
+		if err != nil {
+			return nil, err
+		}
+		remotePeerID, err = peer.IDFromPublicKey(remotePubKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := connScope.SetPeer(remotePeerID); err != nil {
 		log.Debug("resource manager blocked incoming connection for peer", "peer", remotePeerID, "addr", qconn.RemoteAddr(), "err", err)

@@ -19,7 +19,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/dntls"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls/noisewrap"
 	"github.com/libp2p/go-libp2p/p2p/security/dntls/pb"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	"github.com/benbjohnson/clock"
@@ -62,7 +64,7 @@ func WithTLSClientConfig(c *tls.Config) Option {
 
 // WithDNTLSNoise sets the DNTLS-Noise transport used for identity
 // verification on the WebTransport stream. Required.
-func WithDNTLSNoise(sec *dntls.Transport) Option {
+func WithDNTLSNoise(sec dntls.Transport) Option {
 	return func(t *transport) error {
 		t.sec = sec
 		return nil
@@ -92,7 +94,7 @@ type transport struct {
 	staticTLSConf  *tls.Config
 	tlsClientConf  *tls.Config
 
-	sec *dntls.Transport
+	sec dntls.Transport
 
 	connMx           sync.Mutex
 	conns            map[*quic.Conn]*conn // quic connection -> *conn
@@ -130,8 +132,14 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 			return nil, err
 		}
 	}
+	// Default to the stock Noise transport behind the seam, matching
+	// upstream behavior when no DNTLS-Noise transport is injected.
 	if t.sec == nil {
-		return nil, errors.New("WebTransport requires a DNTLS-Noise transport (use WithDNTLSNoise)")
+		n, err := noisewrap.New(noise.ID, key, nil)
+		if err != nil {
+			return nil, err
+		}
+		t.sec = n
 	}
 	return t, nil
 }

@@ -25,6 +25,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/security/dntls"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls/noisewrap"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/udpmux"
@@ -83,7 +85,7 @@ type WebRTCTransport struct {
 	rcmgr        network.ResourceManager
 	gater        connmgr.ConnectionGater
 	privKey      ic.PrivKey
-	sec          *dntls.Transport
+	sec          dntls.Transport
 	localPeerId  peer.ID
 
 	listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
@@ -109,7 +111,7 @@ type Option func(*WebRTCTransport) error
 
 // WithDNTLSNoise sets the DNTLS-Noise transport used for peer authentication
 // over data channel 0. Required.
-func WithDNTLSNoise(sec *dntls.Transport) Option {
+func WithDNTLSNoise(sec dntls.Transport) Option {
 	return func(t *WebRTCTransport) error {
 		t.sec = sec
 		return nil
@@ -188,8 +190,14 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 			return nil, err
 		}
 	}
+	// Default to the stock Noise transport behind the seam, matching
+	// upstream behavior when no DNTLS-Noise transport is injected.
 	if transport.sec == nil {
-		return nil, errors.New("WebRTC transport requires a DNTLS-Noise transport (use WithDNTLSNoise)")
+		n, err := noisewrap.New(noise.ID, privKey, nil)
+		if err != nil {
+			return nil, err
+		}
+		transport.sec = n
 	}
 	return transport, nil
 }

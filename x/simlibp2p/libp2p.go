@@ -145,7 +145,7 @@ func newBlankHost(opts BlankHostOpts) (*wrappedHost, error) {
 	if err != nil {
 		return nil, err
 	}
-	quicTr, err := libp2pquic.NewTransport(priv, nil, quicCM, nil, nil, &network.NullResourceManager{})
+	quicTr, err := libp2pquic.NewTransport(priv, quicCM, nil, nil, &network.NullResourceManager{})
 	if err != nil {
 		return nil, err
 	}
