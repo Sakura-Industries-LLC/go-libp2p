@@ -64,14 +64,15 @@ type addrStoreArgs struct {
 }
 
 type addrsManagerArgs struct {
-	NATManager           NATManager
-	AddrsFactory         AddrsFactory
-	ObservedAddrsManager ObservedAddrsManager
-	ListenAddrs          func() []ma.Multiaddr
-	AddCertHashes        func([]ma.Multiaddr) []ma.Multiaddr
-	AutoNATClient        autonatv2Client
-	Bus                  event.Bus
-	AddrStoreArgs        addrStoreArgs
+	NATManager                     NATManager
+	AddrsFactory                   AddrsFactory
+	ObservedAddrsManager           ObservedAddrsManager
+	ListenAddrs                    func() []ma.Multiaddr
+	AddCertHashes                  func([]ma.Multiaddr) []ma.Multiaddr
+	AutoNATClient                  autonatv2Client
+	Bus                            event.Bus
+	AddrStoreArgs                  addrStoreArgs
+	DisableNonPublicAddrPublishing bool
 }
 
 type addrsManagerTestCase struct {
@@ -118,6 +119,7 @@ func newAddrsManagerTestCase(tb testing.TB, args addrsManagerArgs) addrsManagerT
 		true,
 		prometheus.DefaultRegisterer,
 		false,
+		args.DisableNonPublicAddrPublishing,
 		signKey,
 		addrStore,
 		pid,
@@ -447,6 +449,53 @@ func TestAddrsManagerReachabilityEvent(t *testing.T) {
 	}
 }
 
+func TestAddrsManagerConfirmedAddrsIncludesSecondaryTransports(t *testing.T) {
+	// A node listening on every transport kubo enables by default, on two UDP
+	// sockets: one reachable, one not. Each UDP bucket interleaves under
+	// Multiaddr.Compare (webrtc-direct sorts before its quic-v1 primary), and
+	// getConfirmedAddrs and Addrs merge the buckets with helpers that
+	// silently drop entries on unsorted input: removeNotInSource must keep
+	// all confirmed addrs in both the reachable and unreachable buckets, and
+	// removeInSource must remove every confirmed-unreachable addr from Addrs.
+	tcp := ma.StringCast("/ip4/1.2.3.4/tcp/4001")
+	wsSNI := ma.StringCast("/ip4/1.2.3.4/tcp/4001/tls/sni/*.example.net/ws")
+	quicPub := ma.StringCast("/ip4/1.2.3.4/udp/4002/quic-v1")
+	webrtcPub := ma.StringCast("/ip4/1.2.3.4/udp/4002/webrtc-direct")
+	wtPub := ma.StringCast("/ip4/1.2.3.4/udp/4002/quic-v1/webtransport")
+	quicPriv := ma.StringCast("/ip4/1.2.3.4/udp/4001/quic-v1")
+	webrtcPriv := ma.StringCast("/ip4/1.2.3.4/udp/4001/webrtc-direct")
+	wtPriv := ma.StringCast("/ip4/1.2.3.4/udp/4001/quic-v1/webtransport")
+	reachableAddrs := []ma.Multiaddr{tcp, wsSNI, quicPub, webrtcPub, wtPub}
+	unreachableAddrs := []ma.Multiaddr{quicPriv, webrtcPriv, wtPriv}
+	listenAddrs := append(slices.Clone(reachableAddrs), unreachableAddrs...)
+
+	// The UDP socket on port 4001 is unreachable, everything else is reachable.
+	am := newAddrsManagerTestCase(t, addrsManagerArgs{
+		ListenAddrs: func() []ma.Multiaddr { return listenAddrs },
+		AutoNATClient: mockAutoNATClient{
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				rch := network.ReachabilityPublic
+				if port, err := reqs[0].Addr.ValueForProtocol(ma.P_UDP); err == nil && port == "4001" {
+					rch = network.ReachabilityPrivate
+				}
+				return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: rch}, nil
+			},
+		},
+	})
+	defer am.Close()
+
+	require.Eventually(t, func() bool {
+		reachable, unreachable, _ := am.ConfirmedAddrs()
+		return len(reachable) == len(reachableAddrs) && len(unreachable) == len(unreachableAddrs)
+	}, 5*time.Second, 50*time.Millisecond, "expected all listen addrs to be confirmed")
+
+	reachable, unreachable, unknown := am.ConfirmedAddrs()
+	matest.AssertMultiaddrsMatch(t, reachableAddrs, reachable)
+	matest.AssertMultiaddrsMatch(t, unreachableAddrs, unreachable)
+	require.Empty(t, unknown)
+	matest.AssertMultiaddrsMatch(t, reachableAddrs, am.Addrs())
+}
+
 func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 	quic1 := ma.StringCast("/ip4/1.2.3.4/udp/1234/quic-v1")
 	quic2 := ma.StringCast("/ip4/1.2.3.5/udp/1/quic-v1")
@@ -486,6 +535,88 @@ func TestAddrsManagerPeerstoreUpdated(t *testing.T) {
 	pr = peerRecordFromEnvelope(t, ev)
 	require.Equal(t, pr.Addrs, []ma.Multiaddr{quic2})
 
+}
+
+func TestAddrsManagerNonPublicAddrPublishing(t *testing.T) {
+	publicV4 := ma.StringCast("/ip4/1.2.3.4/udp/1/quic-v1")
+	publicV6 := ma.StringCast("/ip6/2001:41d0:203:2ca6::/udp/4001/quic-v1")
+	loopback4 := ma.StringCast("/ip4/127.0.0.1/udp/1/quic-v1")
+	loopback6 := ma.StringCast("/ip6/::1/udp/1/quic-v1")
+	rfc1918 := ma.StringCast("/ip4/192.168.1.5/tcp/4001")
+	cgnat := ma.StringCast("/ip4/100.64.0.1/tcp/4001")
+	linkLocal4 := ma.StringCast("/ip4/169.254.10.10/tcp/4001")
+	ula := ma.StringCast("/ip6/fc00::1/tcp/4001")
+	linkLocal6 := ma.StringCast("/ip6/fe80::1/tcp/4001")
+	reservedV6 := ma.StringCast("/ip6/1e::109d:0:2:c80b/tcp/4001")
+	docV6 := ma.StringCast("/ip6/2001:db8::1/tcp/4001")
+	circuit := ma.StringCast("/p2p/12D3KooWGyVU3Z7iEFEKnLRWUZSCgZkruxXt9TafKigQv9TUx2N1/p2p-circuit")
+	dnsPublic := ma.StringCast("/dns4/example.com/tcp/443/wss")
+	dnsLocal := ma.StringCast("/dns4/foo.local/tcp/443")
+	zonedLinkLocal6 := ma.StringCast("/ip6zone/eth0/ip6/fe80::1/tcp/4001")
+
+	all := []ma.Multiaddr{
+		publicV4, publicV6,
+		loopback4, loopback6,
+		rfc1918, cgnat, linkLocal4,
+		ula, linkLocal6,
+		reservedV6, docV6,
+		circuit, dnsPublic, dnsLocal,
+		zonedLinkLocal6,
+	}
+
+	t.Run("publishes everything by default", func(t *testing.T) {
+		pstore, err := pstoremem.NewPeerstore()
+		require.NoError(t, err)
+		cab, _ := peerstore.GetCertifiedAddrBook(pstore)
+		signKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+		require.NoError(t, err)
+		pid, err := peer.IDFromPrivateKey(signKey)
+		require.NoError(t, err)
+
+		am := newAddrsManagerTestCase(t, addrsManagerArgs{
+			ListenAddrs:  func() []ma.Multiaddr { return nil },
+			AddrsFactory: func([]ma.Multiaddr) []ma.Multiaddr { return all },
+			AddrStoreArgs: addrStoreArgs{
+				AddrStore: pstore,
+				HostID:    pid,
+				SignKey:   signKey,
+			},
+		})
+		defer am.Close()
+
+		require.ElementsMatch(t, all, pstore.Addrs(pid))
+		pr := peerRecordFromEnvelope(t, cab.GetPeerRecord(pid))
+		require.ElementsMatch(t, all, pr.Addrs)
+	})
+
+	t.Run("strips non-public IP addrs when publishing is disabled", func(t *testing.T) {
+		pstore, err := pstoremem.NewPeerstore()
+		require.NoError(t, err)
+		cab, _ := peerstore.GetCertifiedAddrBook(pstore)
+		signKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+		require.NoError(t, err)
+		pid, err := peer.IDFromPrivateKey(signKey)
+		require.NoError(t, err)
+
+		am := newAddrsManagerTestCase(t, addrsManagerArgs{
+			ListenAddrs:  func() []ma.Multiaddr { return nil },
+			AddrsFactory: func([]ma.Multiaddr) []ma.Multiaddr { return all },
+			AddrStoreArgs: addrStoreArgs{
+				AddrStore: pstore,
+				HostID:    pid,
+				SignKey:   signKey,
+			},
+			DisableNonPublicAddrPublishing: true,
+		})
+		defer am.Close()
+
+		// kept: public v4/v6, /p2p-circuit (no IP), public DNS
+		// stripped: loopback, RFC1918, CGNAT, link-local (incl. ip6zone-wrapped), ULA, reserved/doc IPv6, .local DNS
+		expected := []ma.Multiaddr{publicV4, publicV6, circuit, dnsPublic}
+		require.ElementsMatch(t, expected, pstore.Addrs(pid))
+		pr := peerRecordFromEnvelope(t, cab.GetPeerRecord(pid))
+		require.ElementsMatch(t, expected, pr.Addrs)
+	})
 }
 
 func TestRemoveIfNotInSource(t *testing.T) {

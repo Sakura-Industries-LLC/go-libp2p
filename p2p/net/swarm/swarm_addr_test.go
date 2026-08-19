@@ -85,7 +85,7 @@ func TestDialAddressSelection(t *testing.T) {
 	reuse, err := quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
 	require.NoError(t, err)
 	defer reuse.Close()
-	quicTr, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
+	quicTr, err := libp2pquic.NewTransport(priv, nil, reuse, nil, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, s.AddTransport(quicTr))
 	webtransportTr, err := webtransport.New(priv, nil, reuse, nil, nil)

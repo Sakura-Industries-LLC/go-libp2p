@@ -142,7 +142,7 @@ func newTestSwarmWithResolver(t *testing.T, resolver *madns.Resolver) *Swarm {
 
 	connmgr, err := quicreuse.NewConnManager(quic.StatelessResetKey{}, quic.TokenGeneratorKey{})
 	require.NoError(t, err)
-	quicTpt, err := libp2pquic.NewTransport(priv, connmgr, nil, nil, &network.NullResourceManager{})
+	quicTpt, err := libp2pquic.NewTransport(priv, nil, connmgr, nil, nil, &network.NullResourceManager{})
 	require.NoError(t, err)
 	err = s.AddTransport(quicTpt)
 	require.NoError(t, err)

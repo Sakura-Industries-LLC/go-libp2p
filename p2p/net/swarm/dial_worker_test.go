@@ -93,7 +93,7 @@ func makeSwarmWithNoListenAddrs(t *testing.T, opts ...Option) *Swarm {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quicTransport, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
+	quicTransport, err := libp2pquic.NewTransport(priv, nil, reuse, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

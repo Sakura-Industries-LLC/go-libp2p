@@ -97,8 +97,18 @@ func TestAutoNATPrivateAddr(t *testing.T) {
 	require.ErrorIs(t, err, ErrPrivateAddrs)
 }
 
+func TestGetReachabilityAfterClose(t *testing.T) {
+	// The host closes autonat before the address manager, whose reachability
+	// tracker workers may still issue checks during shutdown.
+	an := newAutoNAT(t, nil)
+	an.Close()
+	res, err := an.GetReachability(context.Background(), []Request{{Addr: ma.StringCast("/ip4/1.2.3.4/udp/10/quic-v1")}})
+	require.ErrorIs(t, err, ErrNoPeers)
+	require.Equal(t, Result{}, res)
+}
+
 func TestClientRequest(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -133,7 +143,7 @@ func TestClientRequest(t *testing.T) {
 }
 
 func TestClientServerError(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -177,7 +187,7 @@ func TestClientServerError(t *testing.T) {
 }
 
 func TestClientDataRequest(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -335,7 +345,7 @@ func TestAutoNATPrivateAndPublicAddrs(t *testing.T) {
 }
 
 func TestClientDialBacks(t *testing.T) {
-	an := newAutoNAT(t, nil, allowPrivateAddrs)
+	an := newAutoNAT(t, nil, AllowPrivateAddrs)
 	defer an.Close()
 	defer an.host.Close()
 
@@ -695,7 +705,7 @@ func TestPeerMap(t *testing.T) {
 }
 
 func FuzzClient(f *testing.F) {
-	a := newAutoNAT(f, nil, allowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
+	a := newAutoNAT(f, nil, AllowPrivateAddrs, WithServerRateLimit(math.MaxInt32, math.MaxInt32, math.MaxInt32, 2))
 	c := newAutoNAT(f, nil)
 	idAndWait(f, c, a)
 
