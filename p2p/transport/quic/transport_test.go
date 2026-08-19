@@ -20,7 +20,7 @@ func getTransport(t *testing.T) tpt.Transport {
 	require.NoError(t, err)
 	key, err := ic.UnmarshalRsaPrivateKey(x509.MarshalPKCS1PrivateKey(rsaKey))
 	require.NoError(t, err)
-	tr, err := NewTransport(key, newConnManager(t), nil, nil, nil)
+	tr, err := NewTransport(key, newTestProvider(t, key), newConnManager(t), nil, nil, nil)
 	require.NoError(t, err)
 	return tr
 }

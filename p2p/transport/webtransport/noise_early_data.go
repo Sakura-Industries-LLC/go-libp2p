@@ -5,8 +5,8 @@ import (
 	"net"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls/pb"
 )
 
 type earlyDataHandler struct {
@@ -14,13 +14,13 @@ type earlyDataHandler struct {
 	receive   func(extensions *pb.NoiseExtensions) error
 }
 
-var _ noise.EarlyDataHandler = &earlyDataHandler{}
+var _ dntls.EarlyDataHandler = &earlyDataHandler{}
 
-func newEarlyDataSender(earlyData *pb.NoiseExtensions) noise.EarlyDataHandler {
+func newEarlyDataSender(earlyData *pb.NoiseExtensions) dntls.EarlyDataHandler {
 	return &earlyDataHandler{earlyData: earlyData}
 }
 
-func newEarlyDataReceiver(receive func(*pb.NoiseExtensions) error) noise.EarlyDataHandler {
+func newEarlyDataReceiver(receive func(*pb.NoiseExtensions) error) dntls.EarlyDataHandler {
 	return &earlyDataHandler{receive: receive}
 }
 

@@ -11,8 +11,8 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/network"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls/pb"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	ma "github.com/multiformats/go-multiaddr"
@@ -285,7 +285,7 @@ func (l *listener) handshake(ctx context.Context, sess *webtransport.Session) (*
 		earlyData = l.transport.certManager.SerializedCertHashes()
 	}
 
-	n, err := l.transport.noise.WithSessionOptions(noise.EarlyData(
+	n, err := l.transport.sec.WithSessionOptions(dntls.EarlyData(
 		nil,
 		newEarlyDataSender(&pb.NoiseExtensions{WebtransportCerthashes: earlyData}),
 	))

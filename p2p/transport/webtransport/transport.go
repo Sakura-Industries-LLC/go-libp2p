@@ -18,8 +18,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	"github.com/libp2p/go-libp2p/p2p/security/noise/pb"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls/pb"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	"github.com/benbjohnson/clock"
@@ -60,6 +60,15 @@ func WithTLSClientConfig(c *tls.Config) Option {
 	}
 }
 
+// WithDNTLSNoise sets the DNTLS-Noise transport used for identity
+// verification on the WebTransport stream. Required.
+func WithDNTLSNoise(sec *dntls.Transport) Option {
+	return func(t *transport) error {
+		t.sec = sec
+		return nil
+	}
+}
+
 func WithHandshakeTimeout(d time.Duration) Option {
 	return func(t *transport) error {
 		t.handshakeTimeout = d
@@ -83,7 +92,7 @@ type transport struct {
 	staticTLSConf  *tls.Config
 	tlsClientConf  *tls.Config
 
-	noise *noise.Transport
+	sec *dntls.Transport
 
 	connMx           sync.Mutex
 	conns            map[*quic.Conn]*conn // quic connection -> *conn
@@ -121,11 +130,9 @@ func New(key ic.PrivKey, psk pnet.PSK, connManager *quicreuse.ConnManager, gater
 			return nil, err
 		}
 	}
-	n, err := noise.New(noise.ID, key, nil)
-	if err != nil {
-		return nil, err
+	if t.sec == nil {
+		return nil, errors.New("WebTransport requires a DNTLS-Noise transport (use WithDNTLSNoise)")
 	}
-	t.noise = n
 	return t, nil
 }
 
@@ -251,7 +258,7 @@ func (t *transport) upgrade(ctx context.Context, sess *webtransport.Session, p p
 	// Now run a Noise handshake (using early data) and get all the certificate hashes from the server.
 	// We will verify that the certhashes we used to dial is a subset of the certhashes we received from the server.
 	var verified bool
-	n, err := t.noise.WithSessionOptions(noise.EarlyData(newEarlyDataReceiver(func(b *pb.NoiseExtensions) error {
+	n, err := t.sec.WithSessionOptions(dntls.EarlyData(newEarlyDataReceiver(func(b *pb.NoiseExtensions) error {
 		decodedCertHashes, err := decodeCertHashesFromProtobuf(b.WebtransportCerthashes)
 		if err != nil {
 			return err

@@ -16,7 +16,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/pnet"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	p2ptls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	"github.com/libp2p/go-libp2p/p2p/security/dntlscfg"
 	"github.com/libp2p/go-libp2p/p2p/transport/quicreuse"
 
 	logging "github.com/libp2p/go-libp2p/gologshim"
@@ -38,7 +38,7 @@ var HolePunchTimeout = 5 * time.Second
 type transport struct {
 	privKey     ic.PrivKey
 	localPeer   peer.ID
-	identity    *p2ptls.Identity
+	dntlsCfg    dntlscfg.Provider
 	connManager *quicreuse.ConnManager
 	gater       connmgr.ConnectionGater
 	rcmgr       network.ResourceManager
@@ -69,17 +69,16 @@ type activeHolePunch struct {
 	fulfilled bool
 }
 
-// NewTransport creates a new QUIC transport
-func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
+// NewTransport creates a new QUIC transport using a DNTLS TLS config provider.
+func NewTransport(key ic.PrivKey, dntlsCfg dntlscfg.Provider, connManager *quicreuse.ConnManager, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr network.ResourceManager) (tpt.Transport, error) {
 	if len(psk) > 0 {
 		log.Error("QUIC doesn't support private networks yet.")
 		return nil, errors.New("QUIC doesn't support private networks yet")
 	}
-	localPeer, err := peer.IDFromPrivateKey(key)
-	if err != nil {
-		return nil, err
+	if dntlsCfg == nil {
+		return nil, errors.New("QUIC transport requires a dntlscfg.Provider")
 	}
-	identity, err := p2ptls.NewIdentity(key)
+	localPeer, err := peer.IDFromPrivateKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +90,7 @@ func NewTransport(key ic.PrivKey, connManager *quicreuse.ConnManager, psk pnet.P
 	return &transport{
 		privKey:      key,
 		localPeer:    localPeer,
-		identity:     identity,
+		dntlsCfg:     dntlsCfg,
 		connManager:  connManager,
 		gater:        gater,
 		rcmgr:        rcmgr,
@@ -133,22 +132,20 @@ func (t *transport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p pee
 		return nil, err
 	}
 
-	tlsConf, keyCh := t.identity.ConfigForPeer(p)
+	tlsConf, err := t.dntlsCfg.ClientTLSConfig(p)
+	if err != nil {
+		return nil, fmt.Errorf("DNTLS client TLS config: %w", err)
+	}
 	ctx = quicreuse.WithAssociation(ctx, t)
 	pconn, err := t.connManager.DialQUIC(ctx, raddr, tlsConf, t.allowWindowIncrease)
 	if err != nil {
 		return nil, err
 	}
 
-	// Should be ready by this point, don't block.
-	var remotePubKey ic.PubKey
-	select {
-	case remotePubKey = <-keyCh:
-	default:
-	}
-	if remotePubKey == nil {
+	remotePubKey, _, err := t.dntlsCfg.ExtractPeerIdentity(pconn.ConnectionState().TLS)
+	if err != nil {
 		pconn.CloseWithError(1, "")
-		return nil, errors.New("p2p/transport/quic BUG: expected remote pub key to be set")
+		return nil, fmt.Errorf("DNTLS identity extraction: %w", err)
 	}
 
 	localMultiaddr, err := quicreuse.ToQuicMultiaddr(pconn.LocalAddr(), pconn.ConnectionState().Version)
@@ -284,12 +281,7 @@ func (t *transport) CanDial(addr ma.Multiaddr) bool {
 func (t *transport) Listen(addr ma.Multiaddr) (tpt.Listener, error) {
 	var tlsConf tls.Config
 	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
-		// return a tls.Config that verifies the peer's certificate chain.
-		// Note that since we have no way of associating an incoming QUIC connection with
-		// the peer ID calculated here, we don't actually receive the peer's public key
-		// from the key chan.
-		conf, _ := t.identity.ConfigForPeer("")
-		return conf, nil
+		return t.dntlsCfg.ServerTLSConfig()
 	}
 	tlsConf.NextProtos = []string{"libp2p"}
 	udpAddr, version, err := quicreuse.FromQuicMultiaddr(addr)

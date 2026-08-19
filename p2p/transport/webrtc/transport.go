@@ -26,7 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/pnet"
 	"github.com/libp2p/go-libp2p/core/sec"
 	tpt "github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/security/dntls"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/webrtc/pb"
 	"github.com/libp2p/go-msgio"
@@ -84,7 +84,7 @@ type WebRTCTransport struct {
 	rcmgr        network.ResourceManager
 	gater        connmgr.ConnectionGater
 	privKey      ic.PrivKey
-	noiseTpt     *noise.Transport
+	sec          *dntls.Transport
 	localPeerId  peer.ID
 
 	listenUDP func(network string, laddr *net.UDPAddr) (net.PacketConn, error)
@@ -99,6 +99,15 @@ type WebRTCTransport struct {
 var _ tpt.Transport = &WebRTCTransport{}
 
 type Option func(*WebRTCTransport) error
+
+// WithDNTLSNoise sets the DNTLS-Noise transport used for peer authentication
+// over data channel 0. Required.
+func WithDNTLSNoise(sec *dntls.Transport) Option {
+	return func(t *WebRTCTransport) error {
+		t.sec = sec
+		return nil
+	}
+}
 
 type iceTimeouts struct {
 	Disconnect time.Duration
@@ -142,16 +151,11 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 	config := webrtc.Configuration{
 		Certificates: []webrtc.Certificate{*cert},
 	}
-	noiseTpt, err := noise.New(noise.ID, privKey, nil)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create noise transport: %w", err)
-	}
 	transport := &WebRTCTransport{
 		rcmgr:        rcmgr,
 		gater:        gater,
 		webrtcConfig: config,
 		privKey:      privKey,
-		noiseTpt:     noiseTpt,
 		localPeerId:  localPeerID,
 
 		listenUDP: listenUDP,
@@ -167,6 +171,9 @@ func New(privKey ic.PrivKey, psk pnet.PSK, gater connmgr.ConnectionGater, rcmgr 
 		if err := opt(transport); err != nil {
 			return nil, err
 		}
+	}
+	if transport.sec == nil {
+		return nil, errors.New("WebRTC transport requires a DNTLS-Noise transport (use WithDNTLSNoise)")
 	}
 	return transport, nil
 }
@@ -500,12 +507,12 @@ func (t *WebRTCTransport) noiseHandshake(ctx context.Context, pc *webrtc.PeerCon
 	if err != nil {
 		return nil, fmt.Errorf("generate prologue: %w", err)
 	}
-	opts := make([]noise.SessionOption, 0, 2)
-	opts = append(opts, noise.Prologue(prologue))
+	opts := make([]dntls.SessionOption, 0, 2)
+	opts = append(opts, dntls.Prologue(prologue))
 	if peer == "" {
-		opts = append(opts, noise.DisablePeerIDCheck())
+		opts = append(opts, dntls.DisablePeerIDCheck())
 	}
-	sessionTransport, err := t.noiseTpt.WithSessionOptions(opts...)
+	sessionTransport, err := t.sec.WithSessionOptions(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate Noise transport: %w", err)
 	}

@@ -196,7 +196,7 @@ func GenSwarm(t testing.TB, opts ...Option) *swarm.Swarm {
 		if err != nil {
 			t.Fatal(err)
 		}
-		quicTransport, err := libp2pquic.NewTransport(priv, reuse, nil, cfg.connectionGater, nil)
+		quicTransport, err := libp2pquic.NewTransport(priv, nil, reuse, nil, cfg.connectionGater, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

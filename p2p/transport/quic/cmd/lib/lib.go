@@ -35,7 +35,7 @@ func RunClient(raddr string, p string) error {
 	if err != nil {
 		return err
 	}
-	t, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
+	t, err := libp2pquic.NewTransport(priv, nil, reuse, nil, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func RunServer(port string, location chan peer.AddrInfo) error {
 	if err != nil {
 		return err
 	}
-	t, err := libp2pquic.NewTransport(priv, reuse, nil, nil, nil)
+	t, err := libp2pquic.NewTransport(priv, nil, reuse, nil, nil, nil)
 	if err != nil {
 		return err
 	}

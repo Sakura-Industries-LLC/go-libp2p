@@ -1,0 +1,22 @@
+syntax = "proto3";
+package dntls.pb;
+
+option go_package = "github.com/libp2p/go-libp2p/p2p/security/dntls/pb";
+
+message NoiseExtensions {
+  repeated bytes webtransport_certhashes = 1;
+  repeated string stream_muxers = 2;
+}
+
+message DntlsClaims {
+  bytes outer_hash = 1;
+  string fqdn = 2;
+  repeated bytes subname_hashes = 3;
+}
+
+message DntlsNoisePayload {
+  bytes identity_key = 1;
+  bytes identity_sig = 2;
+  DntlsClaims claims = 3;
+  NoiseExtensions extensions = 4;
+}
