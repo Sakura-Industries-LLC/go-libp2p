@@ -74,10 +74,13 @@ func (x *NoiseExtensions) GetStreamMuxers() []string {
 }
 
 type DntlsClaims struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OuterHash     []byte                 `protobuf:"bytes,1,opt,name=outer_hash,json=outerHash,proto3" json:"outer_hash,omitempty"`
-	Fqdn          string                 `protobuf:"bytes,2,opt,name=fqdn,proto3" json:"fqdn,omitempty"`
-	SubnameHashes [][]byte               `protobuf:"bytes,3,rep,name=subname_hashes,json=subnameHashes,proto3" json:"subname_hashes,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// hash is the registration hash of the claimed name.
+	Hash []byte `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
+	// fqdn is the full name being claimed.
+	Fqdn string `protobuf:"bytes,2,opt,name=fqdn,proto3" json:"fqdn,omitempty"`
+	// selectors are the selector path hashes of the claimed name.
+	Selectors     [][]byte `protobuf:"bytes,3,rep,name=selectors,proto3" json:"selectors,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -112,9 +115,9 @@ func (*DntlsClaims) Descriptor() ([]byte, []int) {
 	return file_payload_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *DntlsClaims) GetOuterHash() []byte {
+func (x *DntlsClaims) GetHash() []byte {
 	if x != nil {
-		return x.OuterHash
+		return x.Hash
 	}
 	return nil
 }
@@ -126,9 +129,9 @@ func (x *DntlsClaims) GetFqdn() string {
 	return ""
 }
 
-func (x *DntlsClaims) GetSubnameHashes() [][]byte {
+func (x *DntlsClaims) GetSelectors() [][]byte {
 	if x != nil {
-		return x.SubnameHashes
+		return x.Selectors
 	}
 	return nil
 }
@@ -208,12 +211,11 @@ const file_payload_proto_rawDesc = "" +
 	"\rpayload.proto\x12\bdntls.pb\"o\n" +
 	"\x0fNoiseExtensions\x127\n" +
 	"\x17webtransport_certhashes\x18\x01 \x03(\fR\x16webtransportCerthashes\x12#\n" +
-	"\rstream_muxers\x18\x02 \x03(\tR\fstreamMuxers\"g\n" +
-	"\vDntlsClaims\x12\x1d\n" +
-	"\n" +
-	"outer_hash\x18\x01 \x01(\fR\touterHash\x12\x12\n" +
-	"\x04fqdn\x18\x02 \x01(\tR\x04fqdn\x12%\n" +
-	"\x0esubname_hashes\x18\x03 \x03(\fR\rsubnameHashes\"\xc3\x01\n" +
+	"\rstream_muxers\x18\x02 \x03(\tR\fstreamMuxers\"S\n" +
+	"\vDntlsClaims\x12\x12\n" +
+	"\x04hash\x18\x01 \x01(\fR\x04hash\x12\x12\n" +
+	"\x04fqdn\x18\x02 \x01(\tR\x04fqdn\x12\x1c\n" +
+	"\tselectors\x18\x03 \x03(\fR\tselectors\"\xc3\x01\n" +
 	"\x11DntlsNoisePayload\x12!\n" +
 	"\fidentity_key\x18\x01 \x01(\fR\videntityKey\x12!\n" +
 	"\fidentity_sig\x18\x02 \x01(\fR\videntitySig\x12-\n" +

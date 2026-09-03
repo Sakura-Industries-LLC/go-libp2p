@@ -9,9 +9,12 @@ message NoiseExtensions {
 }
 
 message DntlsClaims {
-  bytes outer_hash = 1;
+  // hash is the registration hash of the claimed name.
+  bytes hash = 1;
+  // fqdn is the full name being claimed.
   string fqdn = 2;
-  repeated bytes subname_hashes = 3;
+  // selectors are the selector path hashes of the claimed name.
+  repeated bytes selectors = 3;
 }
 
 message DntlsNoisePayload {
