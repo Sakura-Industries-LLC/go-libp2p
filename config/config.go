@@ -71,6 +71,9 @@ type AutoNATConfig struct {
 	ThrottleGlobalLimit int
 	ThrottlePeerLimit   int
 	ThrottleInterval    time.Duration
+	// ServiceDialer, when non-nil, is used as the AutoNAT service dialer
+	// instead of generating an auxiliary Ed25519 identity and cloned security stack.
+	ServiceDialer network.Network
 }
 
 type Security struct {
@@ -691,68 +694,10 @@ func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
 			autonat.WithPeerThrottling(cfg.AutoNATConfig.ThrottlePeerLimit))
 	}
 	if cfg.AutoNATConfig.EnableService {
-		autonatPrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+		dialer, err := cfg.autoNATServiceDialer()
 		if err != nil {
 			return err
 		}
-		ps, err := pstoremem.NewPeerstore()
-		if err != nil {
-			return err
-		}
-
-		// Pull out the pieces of the config that we _actually_ care about.
-		// Specifically, don't set up things like listeners, identify, etc.
-		autoNatCfg := Config{
-			Transports:         cfg.Transports,
-			Muxers:             cfg.Muxers,
-			SecurityTransports: cfg.SecurityTransports,
-			Insecure:           cfg.Insecure,
-			PSK:                cfg.PSK,
-			ConnectionGater:    cfg.ConnectionGater,
-			Reporter:           cfg.Reporter,
-			PeerKey:            autonatPrivKey,
-			Peerstore:          ps,
-			DialRanker:         swarm.NoDelayDialRanker,
-			ResourceManager:    cfg.ResourceManager,
-			SwarmOpts: []swarm.Option{
-				swarm.WithUDPBlackHoleSuccessCounter(nil),
-				swarm.WithIPv6BlackHoleSuccessCounter(nil),
-			},
-		}
-
-		fxopts, err := autoNatCfg.addTransports()
-		if err != nil {
-			return err
-		}
-		var dialer *swarm.Swarm
-
-		fxopts = append(fxopts,
-			fx.Provide(eventbus.NewBus),
-			fx.Provide(func(lifecycle fx.Lifecycle, b event.Bus) (*swarm.Swarm, error) {
-				lifecycle.Append(fx.Hook{
-					OnStop: func(context.Context) error {
-						return ps.Close()
-					}})
-				var err error
-				dialer, err = autoNatCfg.makeSwarm(b, false)
-				return dialer, err
-
-			}),
-			fx.Provide(func(s *swarm.Swarm) peer.ID { return s.LocalPeer() }),
-			fx.Provide(func() crypto.PrivKey { return autonatPrivKey }),
-		)
-		app := fx.New(fxopts...)
-		if err := app.Err(); err != nil {
-			return err
-		}
-		err = app.Start(context.Background())
-		if err != nil {
-			return err
-		}
-		go func() {
-			<-dialer.Done() // The swarm used for autonat has closed, we can cleanup now
-			app.Stop(context.Background())
-		}()
 		autonatOpts = append(autonatOpts, autonat.EnableService(dialer))
 	}
 	if cfg.AutoNATConfig.ForceReachability != nil {
@@ -765,6 +710,79 @@ func (cfg *Config) addAutoNAT(h *bhost.BasicHost) error {
 	}
 	h.SetAutoNat(autonat)
 	return nil
+}
+
+func (cfg *Config) autoNATServiceDialer() (network.Network, error) {
+	if cfg.AutoNATConfig.ServiceDialer != nil {
+		return cfg.AutoNATConfig.ServiceDialer, nil
+	}
+	return cfg.newAutoNATServiceDialer()
+}
+
+func (cfg *Config) newAutoNATServiceDialer() (network.Network, error) {
+	autonatPrivKey, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	ps, err := pstoremem.NewPeerstore()
+	if err != nil {
+		return nil, err
+	}
+
+	// Pull out the pieces of the config that we _actually_ care about.
+	// Specifically, don't set up things like listeners, identify, etc.
+	autoNatCfg := Config{
+		Transports:         cfg.Transports,
+		Muxers:             cfg.Muxers,
+		SecurityTransports: cfg.SecurityTransports,
+		Insecure:           cfg.Insecure,
+		PSK:                cfg.PSK,
+		ConnectionGater:    cfg.ConnectionGater,
+		Reporter:           cfg.Reporter,
+		PeerKey:            autonatPrivKey,
+		Peerstore:          ps,
+		DialRanker:         swarm.NoDelayDialRanker,
+		ResourceManager:    cfg.ResourceManager,
+		SwarmOpts: []swarm.Option{
+			swarm.WithUDPBlackHoleSuccessCounter(nil),
+			swarm.WithIPv6BlackHoleSuccessCounter(nil),
+		},
+	}
+
+	fxopts, err := autoNatCfg.addTransports()
+	if err != nil {
+		return nil, err
+	}
+	var dialer *swarm.Swarm
+
+	fxopts = append(fxopts,
+		fx.Provide(eventbus.NewBus),
+		fx.Provide(func(lifecycle fx.Lifecycle, b event.Bus) (*swarm.Swarm, error) {
+			lifecycle.Append(fx.Hook{
+				OnStop: func(context.Context) error {
+					return ps.Close()
+				}})
+			var err error
+			dialer, err = autoNatCfg.makeSwarm(b, false)
+			return dialer, err
+
+		}),
+		fx.Provide(func(s *swarm.Swarm) peer.ID { return s.LocalPeer() }),
+		fx.Provide(func() crypto.PrivKey { return autonatPrivKey }),
+	)
+	app := fx.New(fxopts...)
+	if err := app.Err(); err != nil {
+		return nil, err
+	}
+	err = app.Start(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		<-dialer.Done() // The swarm used for autonat has closed, we can cleanup now
+		app.Stop(context.Background())
+	}()
+	return dialer, nil
 }
 
 // Option is a libp2p config option that can be given to the libp2p constructor

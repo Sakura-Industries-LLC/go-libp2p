@@ -374,6 +374,23 @@ func EnableNATService() Option {
 	}
 }
 
+// EnableNATServiceWithDialer configures libp2p to provide a service to peers for
+// determining their reachability status, using the supplied network as the
+// AutoNAT service dialer instead of generating an auxiliary Ed25519 identity
+// and cloned security stack.
+//
+// dialer must be non-nil. The AutoNAT service owns and closes the dialer.
+func EnableNATServiceWithDialer(dialer network.Network) Option {
+	return func(cfg *Config) error {
+		if dialer == nil {
+			return errors.New("NAT service dialer cannot be nil")
+		}
+		cfg.AutoNATConfig.EnableService = true
+		cfg.AutoNATConfig.ServiceDialer = dialer
+		return nil
+	}
+}
+
 // AutoNATServiceRateLimit changes the default rate limiting configured in helping
 // other peers determine their reachability status. When set, the host will limit
 // the number of requests it responds to in each 60 second period to the set
