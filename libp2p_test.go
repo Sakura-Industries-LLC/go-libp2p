@@ -402,6 +402,51 @@ func TestAutoNATService(t *testing.T) {
 	h.Close()
 }
 
+func TestEnableNATServiceWithDialer(t *testing.T) {
+	dialer := network.Network((*swarm.Swarm)(nil))
+
+	tests := []struct {
+		name        string
+		opt         Option
+		wantErr     bool
+		wantEnabled bool
+		wantDialer  network.Network
+	}{
+		{
+			name:    "rejects nil dialer",
+			opt:     EnableNATServiceWithDialer(nil),
+			wantErr: true,
+		},
+		{
+			name:        "wires injected dialer and enables service",
+			opt:         EnableNATServiceWithDialer(dialer),
+			wantEnabled: true,
+			wantDialer:  dialer,
+		},
+		{
+			name:        "EnableNATService leaves default construction selected",
+			opt:         EnableNATService(),
+			wantEnabled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg Config
+			err := tt.opt(&cfg)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.False(t, cfg.AutoNATConfig.EnableService)
+				require.Nil(t, cfg.AutoNATConfig.ServiceDialer)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantEnabled, cfg.AutoNATConfig.EnableService)
+			require.Equal(t, tt.wantDialer, cfg.AutoNATConfig.ServiceDialer)
+		})
+	}
+}
+
 func TestInsecureConstructor(t *testing.T) {
 	h, err := New(
 		EnableNATService(),
